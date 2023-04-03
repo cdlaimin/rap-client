@@ -1,20 +1,32 @@
-import { useTranslation } from 'react-i18next'
-import React, { useEffect } from 'react'
-import { useSelector, useDispatch } from 'react-redux'
-import { YUP_MSG } from '../../family/UIConst'
-import { Formik, Field, Form } from 'formik'
+import { Box, Button, Dialog, DialogContent, DialogTitle, MenuItem, Select } from '@mui/material'
+import { Field, Form, Formik } from 'formik'
 import { TextField } from 'formik-mui'
+import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useDispatch, useSelector } from 'react-redux'
 import * as Yup from 'yup'
-import { Button, Dialog, DialogContent, DialogTitle, Box, Select, MenuItem } from '@mui/material'
-import { RepositoryFormData, RootState, Repository } from '../../actions/types'
-// import UserList from '../common/UserList'
-import AccountService from '../../relatives/services/Account'
-import * as _ from 'lodash'
-import { updateRepository, addRepository } from '../../actions/repository'
-import { fetchOwnedOrganizationList, fetchJoinedOrganizationList } from '../../actions/organization'
-import { refresh } from '../../actions/common'
+import { Repository, RepositoryFormData, RootState } from '../../actions/types'
+import AsyncSelect from 'components/common/AsyncSelect'
 import Transition from 'components/common/Transition'
-import AsyncSelect, { AddMembers } from 'components/common/AsyncSelect'
+import _ from 'lodash'
+import { refresh } from '../../actions/common'
+import { fetchJoinedOrganizationList, fetchOwnedOrganizationList } from '../../actions/organization'
+import { addRepository, updateRepository } from '../../actions/repository'
+import AccountService from '../../relatives/services/Account'
+import RadioList from '../utils/RadioList'
+import { FORM, YUP_MSG } from '../../family/UIConst'
+
+export function AddMembers(users, members) {
+  members.forEach(value => {
+    const user = users.find(user => user.id === value.id)
+    if (user) {
+      user.email = value.email
+      user.fullname = value.fullname
+    } else {
+      users.push(value)
+    }
+  })
+}
 
 const formTitleSX = {
   color: 'rgba(0, 0, 0, 0.54)',
@@ -25,11 +37,13 @@ const formTitleSX = {
 const FORM_STATE_INIT: RepositoryFormData = {
   id: 0,
   name: '',
+  basePath: '',
   description: '',
   members: [],
   organizationId: undefined,
   collaborators: [],
   collaboratorIdstring: '',
+  visibility: true,
 }
 interface Props {
   title?: string
@@ -47,6 +61,7 @@ function RepositoryForm(props: Props) {
       .required(msg.REQUIRED)
       .max(40, msg.MAX_LENGTH(40)),
     description: Yup.string().max(1000, msg.MAX_LENGTH(1000)),
+    basePath: Yup.string().nullable().matches(/^(\/|(https|http):\/\/)/, t('basePath is incorrect')),
   })
   const { open, onClose, title, organizationId } = props
   let repository = props.repository as RepositoryFormData
@@ -59,6 +74,7 @@ function RepositoryForm(props: Props) {
   }).map(org => ({
     label: org.name,
     value: org.id,
+    visibility: org.visibility,
   }))
 
   const dispatch = useDispatch()
@@ -114,6 +130,7 @@ function RepositoryForm(props: Props) {
             }}
           >
             {({ isSubmitting, setFieldValue, values }) => {
+              const isShowRepositoryVisibility = organizations.find(item=>item.value === values.organizationId)?.visibility
               const membersFetcher = async (query: string) => {
                 const users = (await AccountService.fetchUserList({ name: query })).data
                 if (values.members) {
@@ -157,9 +174,12 @@ function RepositoryForm(props: Props) {
                       <Field name="name" label={t('The name of the repository')} component={TextField} fullWidth={true} />
                     </Box>
                     <Box sx={{ mb: 1 }}>
+                      <Field name="basePath" label={t('BasePath')} component={TextField} fullWidth={true} />
+                    </Box>
+                    <Box sx={{ mb: 1 }}>
                       <Field
                         name="description"
-                        label={t('Instructions (multiple lines, supporting the Markdown)')}
+                        label={t('Description (multiple lines, supporting the Markdown)')}
                         multiline={true}
                         component={TextField}
                         fullWidth={true}
@@ -191,6 +211,16 @@ function RepositoryForm(props: Props) {
                         </Select>
                       </Box>
                     )}
+                    {isShowRepositoryVisibility && (<>
+                      <Box sx={{ color: 'rgba(0, 0, 0, 0.6)' }}>{t('Visibility')}:</Box>
+                      <Box sx={{ mb: 1 }}>
+                        <RadioList
+                          data={FORM(t).RADIO_LIST_DATA_VISIBILITY}
+                          curVal={values.visibility}
+                          name="visibility"
+                          onChange={(val: any) => setFieldValue('visibility', val)}
+                        />
+                      </Box></>)}
                     <Box sx={{ mb: 1 }}>
                       <Field
                         name="collaboratorIdstring"

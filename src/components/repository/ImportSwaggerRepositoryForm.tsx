@@ -1,35 +1,25 @@
-import { useTranslation } from 'react-i18next'
-import React, { useState } from 'react'
-import { useDispatch } from 'react-redux'
-import { FormControlLabel, RadioGroup, Radio, Box } from '@mui/material'
-import { Formik, Field, Form } from 'formik'
-import { TextField } from 'formik-mui'
-import * as Yup from 'yup'
-import { convert } from '../../utils/ImportUtils'
-import { Button, Dialog, DialogActions, DialogContentText, DialogContent, DialogTitle, Tooltip } from '@mui/material'
-import Transition from 'components/common/Transition'
-import { ImportSwagger } from '../../actions/types'
-import RepositoryService from '../../relatives/services/Repository'
-import './ImportSwaggerRepositoryForm.css'
-import { importSwaggerRepository } from '../../actions/repository'
 import HelpOutlineOutlinedIcon from '@mui/icons-material/HelpOutlineOutlined'
+import {
+  Box,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  Tabs,
+  Tab,
+} from '@mui/material'
+import CloseIcon from '@mui/icons-material/Close'
+import Transition from 'components/common/Transition'
+import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
+import './ImportSwaggerRepositoryForm.sass'
+import { TabPanel } from 'components/utils/TabPanel'
+import ManualImport from './import/ManualImport'
+import AutoImport from './import/AutoImport'
 
-const schema = Yup.object().shape({
-  docUrl: Yup.string(),
-  swagger: Yup.string(),
-})
 export enum COVER_TYPE {
   CREATE = 1,
-  COVER = 2
-}
-const FORM_STATE_INIT: ImportSwagger = {
-  version: 1,
-  docUrl: '',
-  orgId: 0,
-  mode: 'manual',
-  swagger: '',
-  repositoryId: 0,
-  cover: COVER_TYPE.CREATE,
+  COVER = 2,
 }
 
 interface Props {
@@ -39,6 +29,8 @@ interface Props {
   repositoryId?: number
   mode: string
   modId?: number
+  versionId?: number
+  versionName?: string
 }
 
 export enum IMPORT_TYPE {
@@ -53,221 +45,77 @@ export enum IMPORT_TYPE {
   PB3 = 5,
 }
 
+export enum IMPORT_MODE {
+  Manual,
+  Regular
+}
+
 function ImportSwaggerRepositoryForm(props: Props) {
-  const { open, onClose, orgId, mode, repositoryId, modId } = props
-  const dispatch = useDispatch()
-  const [alertOpen, setAlertOpen] = useState({ op: false, msg: '' })
+  const [importMode, setImportMode] = useState(IMPORT_MODE.Manual)
+
+  const handleChange = (event: React.SyntheticEvent, newValue: number) => {
+    setImportMode(newValue)
+  }
+  const { open, onClose} = props
+
+  useEffect(() => {
+    if(open) {
+      setImportMode(IMPORT_MODE.Manual)
+    }
+  }, [open])
+
   const { t } = useTranslation()
   return (
     <Box component="section" sx={{ display: 'inline' }}>
       <Dialog
         open={open}
+        maxWidth='lg'
         onClose={(_event, reason) => reason !== 'backdropClick' && onClose()}
         TransitionComponent={Transition}
       >
-        <DialogTitle>{t('Import repository')}<a href="https://github.com/infra-fe/rap-client/wiki/%E6%95%B0%E6%8D%AE%E5%AF%BC%E5%85%A5Data-Import"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <HelpOutlineOutlinedIcon sx={{ fontSize: '18px', color: '#3f51b5', cursor: 'pointer', marginTop: '-2px' }} />
-        </a></DialogTitle>
+        <DialogTitle>
+          {t('Import repository')}
+          <a
+            href="https://github.com/infra-fe/rap-client/wiki/%E6%95%B0%E6%8D%AE%E5%AF%BC%E5%85%A5Data-Import"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <HelpOutlineOutlinedIcon
+              sx={{
+                fontSize: '18px',
+                color: '#3f51b5',
+                cursor: 'pointer',
+                marginTop: '-2px',
+              }}
+            />
+          </a>
+          <IconButton
+            aria-label="close"
+            onClick={()=>onClose(true)}
+            sx={{
+              position: 'absolute',
+              right: 8,
+              top: 8,
+              color: (theme) => theme.palette.grey[500],
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
         <DialogContent dividers={true}>
-          <Box sx={{ minWidth: '500px', minHeight: '160px' }}>
-            <Formik
-              initialValues={{
-                ...FORM_STATE_INIT,
-              }}
-              validationSchema={schema}
-              onSubmit={async (values, actions) => {
-                let swagger = values.swagger
-                if (!swagger && values.docUrl) {
-                  try {
-                    swagger = await RepositoryService.getSwaggerRepository({
-                      docUrl: values.docUrl,
-                    })
-                    if (typeof swagger === 'object') {
-                      const { errMsg } = swagger
-                      if (errMsg) {
-                        setAlertOpen({
-                          op: true,
-                          msg: errMsg,
-                        })
-                        actions.setSubmitting(false)
-                        return
-                      }
-                    }
-                  } catch (error) {
-                    setAlertOpen({
-                      op: true,
-                      msg:
-                        t('Unable to obtain data, please check whether your service allows CORS, or use directly paste JSON import'),
-                    })
-                    actions.setSubmitting(false)
-                    return
-                  }
-                } else {
-                  try {
-                    swagger = convert(swagger, values.version)
-                  } catch (error) {
-                    setAlertOpen({
-                      op: true,
-                      msg: t('Parsing, failure is not a valid scehma, please check the format'),
-                    })
-                    actions.setSubmitting(false)
-                    return
-                  }
-                }
-                const importSwagger: ImportSwagger = {
-                  ...values,
-                  mode,
-                  swagger,
-                  orgId,
-                  repositoryId,
-                  modId,
-                }
-                const submitPromise = new Promise(resolve => {
-                  dispatch(
-                    importSwaggerRepository(importSwagger, (res: any) => {
-                      if (res.isOk) {
-                        setAlertOpen({ op: true, msg: t('Import success') })
-                        window.location.reload()
-                      } else {
-                        setAlertOpen({ op: true, msg: `${t('importFailed')}：${res.message || res.errMsg}.` })
-                      }
-                      onClose(true)
-                      resolve(null)
-                    })
-                  )
-                })
-
-                await submitPromise
-
-              }}
-            >
-              {({ isSubmitting, setFieldValue, values }) => {
-                return (
-                  <Form>
-                    <div className="rmodal-body">
-                      <Box sx={{ fontSize: '14px' }}>{t('Data resource')}：</Box>
-                      <Box sx={{ mb: 1 }}>
-                        <RadioGroup
-                          name="radioListOp"
-                          value={values.version}
-                          onChange={e => {
-                            setFieldValue('version', +e.target.value)
-                          }}
-                          row={true}
-                        >
-                          <FormControlLabel disabled={isSubmitting} value={IMPORT_TYPE.SWAGGER_2_0} control={<Radio />} label="Swagger 2.0" />
-                          <FormControlLabel
-                            disabled={isSubmitting}
-                            value={IMPORT_TYPE.RAP2_ITF_BACKUP}
-                            control={<Radio />}
-                            label={t('RAP2 interface backup JSON')}
-                          />
-                          <FormControlLabel
-                            disabled={isSubmitting}
-                            value={IMPORT_TYPE.YAPI}
-                            control={<Radio />}
-                            label="YAPI"
-                          />
-                          <FormControlLabel
-                            disabled={isSubmitting}
-                            value={IMPORT_TYPE.PB3}
-                            control={<Radio />}
-                            label="PB"
-                          />
-                        </RadioGroup>
-                      </Box>
-                      <Box sx={{ fontSize: '14px' }}>
-                        {t('Merge pattern')}：
-                        <Tooltip title={t('mergeTip')} placement="right-start"><HelpOutlineOutlinedIcon sx={{ fontSize: '18px', color: '#3f51b5', cursor: 'pointer', marginTop: '-2px' }} /></Tooltip>
-                      </Box>
-                      <Box sx={{ mb: 1 }}>
-                        <RadioGroup
-                          name="radioListOp"
-                          value={values.cover}
-                          onChange={e => {
-                            setFieldValue('cover', +e.target.value)
-                          }}
-                          row={true}
-                        >
-                          <FormControlLabel disabled={isSubmitting} value={COVER_TYPE.CREATE} control={<Radio />} label={t('Add new')} />
-                          <FormControlLabel
-                            disabled={isSubmitting}
-                            value={COVER_TYPE.COVER}
-                            control={<Radio />}
-                            label={t('Cover')}
-                          />
-                        </RadioGroup>
-                      </Box>
-                      {(values.version === IMPORT_TYPE.SWAGGER_2_0 || values.version === IMPORT_TYPE.RAP2_ITF_BACKUP) &&
-                        <Box sx={{ mb: 1 }}>
-                          <Field
-                            placeholder=""
-                            name="docUrl"
-                            label={t('From URL')}
-                            component={TextField}
-                            fullWidth={true}
-                            variant="outlined"
-                            disabled={isSubmitting}
-                          />
-                        </Box>
-                      }
-                      <Box sx={{ mb: 1 }}>
-                        <Field
-                          placeholder=""
-                          name="swagger"
-                          label={values.version === IMPORT_TYPE.SWAGGER_2_0 ? `${t('copySwaggerJson')}` : `${t('copyJson')}`}
-                          component={TextField}
-                          fullWidth={true}
-                          multiline={true}
-                          rows="4"
-                          variant="outlined"
-                          disabled={isSubmitting}
-                        />
-                      </Box>
-                    </div>
-                    <Box sx={{ mt: 3 }}>
-                      <Button
-                        type="submit"
-                        variant="contained"
-                        color={isSubmitting ? 'inherit' : 'primary'}
-                        className="mr1"
-                        disabled={isSubmitting}
-                      >
-                        {isSubmitting ? `${t('importingMsg')}...` : `${t('submit')}`}
-                      </Button>
-                      {!isSubmitting && (
-                        <Button onClick={() => onClose()} disabled={isSubmitting}>
-                          {t('cancel')}
-                        </Button>
-                      )}
-                    </Box>
-                  </Form>
-                )
-              }}
-            </Formik>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs value={importMode} onChange={handleChange} aria-label="basic tabs example">
+              <Tab label={t('Manual Import')}  />
+              <Tab label={t('Auto Import')}/>
+            </Tabs>
           </Box>
+          <TabPanel value={importMode} index={0}>
+            <ManualImport {...props} />
+          </TabPanel>
+          <TabPanel value={importMode} index={1}>
+            <AutoImport {...props} />
+          </TabPanel>
         </DialogContent>
-      </Dialog>
-      <Dialog
-        open={alertOpen.op}
-        onClose={() => setAlertOpen({ op: false, msg: '' })}
-        aria-labelledby="alert-dialog-title"
-        aria-describedby="alert-dialog-description"
-      >
-        <DialogTitle id="alert-dialog-title">{t('prompt')}</DialogTitle>
-        <DialogContent>
-          <DialogContentText id="alert-dialog-description" sx={{ minWidth: '500px', minHeight: '7px' }}>
-            {alertOpen.msg}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAlertOpen({ op: false, msg: '' })} color="primary">
-            {t('confirm')}
-          </Button>
-        </DialogActions>
       </Dialog>
     </Box>
   )
